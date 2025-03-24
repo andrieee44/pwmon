@@ -1,0 +1,26 @@
+.TH PWMON 1
+.SH NAME
+pwmon \- monitor PipeWire volume and mute status
+.SH SYNOPSIS
+.B pwmon
+.SH DESCRIPTION
+.B pwmon
+monitors the volume percentage and mute status of the default PipeWire audio sink.
+To find the id of the default PipeWire audio sink, the program parses the output of
+.IP
+.EX
+.B $ wpctl get-volume @DEFAULT_AUDIO_SINK@
+.EE
+.PP
+Using this id, it will then parse the output of
+.IP
+.EX
+.B $ pw-dump -mN
+.EE
+.PP
+and then finds the corresponding sink and reports the volume percentage and mute status.
+.SH SEE ALSO
+.IR pipewire (1)
+.IR
+.SH AUTHOR
+Kris Andrie Ortega (andrieee44@gmail.com)
