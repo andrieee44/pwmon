@@ -7,6 +7,7 @@ import (
 	"math"
 	"os/exec"
 	"strconv"
+	"time"
 )
 
 type Info struct {
@@ -126,12 +127,18 @@ func Monitor() (<-chan *Info, <-chan error, error) {
 	infoChan = make(chan *Info)
 	errChan = make(chan error)
 
-	id, err = defaultAudioSinkID()
-	if err != nil {
-		return nil, nil, err
+	for range 10 {
+		id, err = defaultAudioSinkID()
+		if err != nil {
+			time.Sleep(time.Second)
+
+			continue
+		}
+
+		go monitorDump(id, infoChan, errChan)
+
+		return infoChan, errChan, nil
 	}
 
-	go monitorDump(id, infoChan, errChan)
-
-	return infoChan, errChan, nil
+	return nil, nil, err
 }
