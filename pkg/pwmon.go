@@ -51,11 +51,12 @@ func defaultAudioSinkID() (uint32, error) {
 
 func monitorDump(id uint32, infoChan chan<- *Info, errChan chan<- error) {
 	var (
-		cmd     *exec.Cmd
-		stdout  io.ReadCloser
-		decoder *json.Decoder
-		idx     int
-		err     error
+		cmd           *exec.Cmd
+		stdout        io.ReadCloser
+		decoder       *json.Decoder
+		idx           int
+		info, oldInfo *Info
+		err           error
 
 		infoJson []struct {
 			Id uint32 `json:"id"`
@@ -99,9 +100,14 @@ func monitorDump(id uint32, infoChan chan<- *Info, errChan chan<- error) {
 				continue
 			}
 
-			infoChan <- &Info{
+			info = &Info{
 				Volume: int(math.Cbrt(infoJson[idx].Info.Params.Props[0].ChannelVolumes[0]) * 100),
 				Mute:   infoJson[idx].Info.Params.Props[0].Mute,
+			}
+
+			if oldInfo == nil || oldInfo.Volume != info.Volume || oldInfo.Mute != info.Mute {
+				oldInfo = info
+				infoChan <- info
 			}
 		}
 	}
