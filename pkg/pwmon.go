@@ -62,6 +62,16 @@ func monitorDump(infoChan chan<- *Info, errChan chan<- error) {
 		err           error
 	)
 
+	info, err = getInfo()
+	if err != nil {
+		errChan <- err
+
+		return
+	}
+
+	infoChan <- info
+	oldInfo = info
+
 	cmd = exec.Command("pactl", "subscribe")
 	stdout, err = cmd.StdoutPipe()
 	if err != nil {
@@ -91,7 +101,7 @@ func monitorDump(infoChan chan<- *Info, errChan chan<- error) {
 			return
 		}
 
-		if oldInfo == nil || oldInfo.Volume != info.Volume || oldInfo.Mute != info.Mute {
+		if oldInfo.Volume != info.Volume || oldInfo.Mute != info.Mute {
 			infoChan <- info
 		}
 
