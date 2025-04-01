@@ -1,13 +1,12 @@
 package pwmon
 
 import (
+	"bufio"
 	"bytes"
-	"encoding/json"
 	"io"
-	"math"
 	"os/exec"
 	"strconv"
-	"time"
+	"strings"
 )
 
 type Info struct {
@@ -15,64 +14,55 @@ type Info struct {
 	Mute   bool
 }
 
-func defaultAudioSinkID() (uint32, error) {
+func getInfo() (*Info, error) {
 	var (
-		cmd   *exec.Cmd
-		buf   bytes.Buffer
-		idStr string
-		id    uint64
-		err   error
+		cmd    *exec.Cmd
+		buf    bytes.Buffer
+		info   *Info
+		fields []string
+		vol    float64
+		err    error
 	)
 
-	cmd = exec.Command("wpctl", "inspect", "@DEFAULT_AUDIO_SINK@")
+	cmd = exec.Command("wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@")
 	cmd.Stdout = &buf
 
 	if cmd.Err != nil {
-		return 0, cmd.Err
+		return nil, cmd.Err
 	}
 
 	err = cmd.Run()
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	idStr, err = buf.ReadString(',')
+	info = new(Info)
+	fields = strings.Fields(buf.String())
+
+	vol, err = strconv.ParseFloat(fields[1], 64)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	id, err = strconv.ParseUint(idStr[3:len(idStr)-1], 10, 32)
-	if err != nil {
-		return 0, err
+	info.Volume = int(vol * 100)
+
+	if len(fields) == 3 {
+		info.Mute = true
 	}
 
-	return uint32(id), nil
+	return info, nil
 }
 
-func monitorDump(id uint32, infoChan chan<- *Info, errChan chan<- error) {
+func monitorDump(infoChan chan<- *Info, errChan chan<- error) {
 	var (
 		cmd           *exec.Cmd
 		stdout        io.ReadCloser
-		decoder       *json.Decoder
-		idx           int
+		scanner       *bufio.Scanner
 		info, oldInfo *Info
 		err           error
-
-		infoJson []struct {
-			Id uint32 `json:"id"`
-
-			Info struct {
-				Params struct {
-					Props []struct {
-						Mute           bool      `json:"mute"`
-						ChannelVolumes []float64 `json:"channelVolumes"`
-					} `json:"Props"`
-				} `json:"params"`
-			} `json:"info"`
-		}
 	)
 
-	cmd = exec.Command("pw-dump", "-mN")
+	cmd = exec.Command("pactl", "subscribe")
 	stdout, err = cmd.StdoutPipe()
 	if err != nil {
 		errChan <- err
@@ -87,38 +77,37 @@ func monitorDump(id uint32, infoChan chan<- *Info, errChan chan<- error) {
 		return
 	}
 
-	decoder = json.NewDecoder(stdout)
+	scanner = bufio.NewScanner(stdout)
 
-	for {
-		err = decoder.Decode(&infoJson)
+	for scanner.Scan() {
+		if !strings.HasPrefix(scanner.Text(), "Event 'change' on sink #") {
+			continue
+		}
+
+		info, err = getInfo()
 		if err != nil {
-			break
+			errChan <- err
+
+			return
 		}
 
-		for idx = range infoJson {
-			if infoJson[idx].Id != id {
-				continue
-			}
-
-			info = &Info{
-				Volume: int(math.Cbrt(infoJson[idx].Info.Params.Props[0].ChannelVolumes[0]) * 100),
-				Mute:   infoJson[idx].Info.Params.Props[0].Mute,
-			}
-
-			if oldInfo == nil || oldInfo.Volume != info.Volume || oldInfo.Mute != info.Mute {
-				oldInfo = info
-				infoChan <- info
-			}
+		if oldInfo == nil || oldInfo.Volume != info.Volume || oldInfo.Mute != info.Mute {
+			infoChan <- info
 		}
+
+		oldInfo = info
 	}
 
-	errChan <- err
-
-	err = cmd.Wait()
+	err = scanner.Err()
 	if err != nil {
 		errChan <- err
 
 		return
+	}
+
+	err = cmd.Wait()
+	if err != nil {
+		errChan <- err
 	}
 }
 
@@ -126,25 +115,11 @@ func Monitor() (<-chan *Info, <-chan error, error) {
 	var (
 		infoChan chan *Info
 		errChan  chan error
-		id       uint32
-		err      error
 	)
 
 	infoChan = make(chan *Info)
 	errChan = make(chan error)
+	go monitorDump(infoChan, errChan)
 
-	for range 10 {
-		id, err = defaultAudioSinkID()
-		if err != nil {
-			time.Sleep(time.Second)
-
-			continue
-		}
-
-		go monitorDump(id, infoChan, errChan)
-
-		return infoChan, errChan, nil
-	}
-
-	return nil, nil, err
+	return infoChan, errChan, nil
 }
