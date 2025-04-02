@@ -3,10 +3,12 @@ package pwmon
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"io"
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Info struct {
@@ -39,6 +41,10 @@ func getInfo() (*Info, error) {
 	info = new(Info)
 	fields = strings.Fields(buf.String())
 
+	if len(fields) == 0 {
+		return nil, errors.New("wpctl: failed to get the default audio sink volume")
+	}
+
 	vol, err = strconv.ParseFloat(fields[1], 64)
 	if err != nil {
 		return nil, err
@@ -59,14 +65,22 @@ func monitorDump(infoChan chan<- *Info, errChan chan<- error) {
 		stdout        io.ReadCloser
 		scanner       *bufio.Scanner
 		info, oldInfo *Info
+		idx           int
 		err           error
 	)
 
-	info, err = getInfo()
-	if err != nil {
-		errChan <- err
+	for idx = range 10 {
+		info, err = getInfo()
+		if err == nil {
+			break
+		}
 
-		return
+		time.Sleep(time.Second)
+		if idx == 9 {
+			errChan <- err
+
+			return
+		}
 	}
 
 	infoChan <- info
