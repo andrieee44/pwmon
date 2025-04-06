@@ -115,7 +115,7 @@ func monitorDump(infoChan chan<- *Info, errChan chan<- error) {
 			return
 		}
 
-		if oldInfo.Volume != info.Volume || oldInfo.Mute != info.Mute {
+		if info != oldInfo {
 			infoChan <- info
 		}
 
