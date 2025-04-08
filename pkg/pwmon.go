@@ -115,7 +115,7 @@ func monitorDump(infoChan chan<- *Info, errChan chan<- error) {
 			return
 		}
 
-		if info != oldInfo {
+		if *info != *oldInfo {
 			infoChan <- info
 		}
 
